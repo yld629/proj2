@@ -58,6 +58,7 @@ public class sys1 {
                 bytes = Integer.parseInt( lineScanner.next() );
                 data = lineScanner.next();
                 isValid = (dataCache[indexedTo.intValue()][0].charAt(0) == '1')? true:false;
+                cacheTag = Long.parseLong( dataCache[indexedTo.intValue()][0].substring(4) );
 
                 /* System.out.println("Address: " + temp + " indexed to: "
                         + Long.toHexString(indexedTo) + " with tag: " + Long.toHexString(curTag)+"\n" );
@@ -74,34 +75,22 @@ public class sys1 {
                     baseChange = false;
 
                 //setup: [0] = "validBit dirtyBit Tag"  [1] = data;
-                if(baseChange || addr - baseAddr >= diff){//Detects a change in index from previous mem address/ or is first address.
+                if(baseChange || addr - baseAddr >= diff && !isValid || addr - baseAddr >= diff && !isValid && cacheTag != curTag){//Detects a change in index from previous mem address/ or is first address.
                     cacheTag = Long.parseLong(dataCache[indexedTo.intValue()][0].substring(4) );
-
-                    //Catch instance when index is valid.
-                    if(cacheTag.equals(curTag)){
-                        //processHit();
-                        if(isRead) {
-                            loads++;
-
-                        }
-                        else {
-                            stores++;
-                        }
-                    }else{
-                        //processMiss();
-                        if(isRead) {
-                            loads++;
-                            rMiss++;
-                            dRmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dRmiss + 1 : dRmiss;
-                        }
-                        else {
-                            stores++;
-                            wMiss++;
-                            dWmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dWmiss + 1 : dWmiss;
-                        }
+                    //processMiss();
+                    if(isRead) {
+                        loads++;
+                        rMiss++;
+                        dRmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dRmiss + 1 : dRmiss;
                     }
+                    else {
+                        stores++;
+                        wMiss++;
+                        dWmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dWmiss + 1 : dWmiss;
+                    }
+
                 }
-                else{
+                else{//process hits
                     if( isRead && dataCache[indexedTo.intValue()][0].substring(0,1).equals("1")){//read hit case 1. Update stats.
                         //just update stats
                         loads++;
@@ -109,7 +98,7 @@ public class sys1 {
 
                     }
                     else if( !isRead ){//case 1 write hit.
-                        //processHit();
+
                         stores++;
                     }
                 }
@@ -174,7 +163,8 @@ public class sys1 {
         dataCache = new String[numRows][2];
 
         for(int i = 0; i < numRows; i++){
-                dataCache[i][0] = "0 0 0";//Indicates a invalid
+            //setup: [i][0]: [0] = "validBit dirtyBit Tag"  [1] = data;
+            dataCache[i][0] = "0 0 0";//Indicates a invalid
         }
     }
 
