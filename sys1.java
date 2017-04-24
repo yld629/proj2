@@ -8,7 +8,9 @@ import java.util.Scanner;
 
 public class sys1 {
     final static int blockSz = 16, missPenalty = 4, wordBytes = 4;//Set block size of 16 bytes.
-    static int cacheSz, numRows, wordsPerRow, ic1, ic2, lineNum = 0, offsetBits, indexBits, tagbits, diff;
+    static int cacheSz, numRows, wordsPerRow, ic1, ic2, lineNum = 0, offsetBits, indexBits,
+            tagbits, diff, loads = 0, stores = 0, wMiss = 0, rMiss = 0, dRmiss = 0, dWmiss = 0,
+            rTime = 0, wTime = 0;
     static boolean verbose = false;
     static String dataCache[][];
 
@@ -31,16 +33,16 @@ public class sys1 {
             scan.close();//reset
             scan = new Scanner(file);
 
-            int bytes, data, hits = 0, misses= 0;
-            Long addr, baseAddr = 0L, mem_addr = 0L, indexedTo, curTag;
-            String binString;
-            boolean isRead;
+            int bytes, hits = 0, misses= 0;
+            Long addr, baseAddr = 0L, mem_addr = 0L, indexedTo, curTag, cacheTag;
+            String binString, data;
+            boolean isRead, isValid;
 
             baseChange = false;
             while(scan.hasNextLine()){
                 String line = scan.nextLine();
 
-                System.out.println("Line no: " + lineNum + "\t" + line);
+                //System.out.println("Line no: " + lineNum + "\t" + line);
 
                 if(line.isEmpty())//last line is empty in file.
                     break;
@@ -49,14 +51,17 @@ public class sys1 {
 
                 lineScanner.next();//Skip PC address
 
-                isRead = (lineScanner.next().equals('R'))? true:false;
+                isRead = (lineScanner.next().equals("R"))? true:false;
                 binString = hexToBinString( lineScanner.next() );//remove preceding '0x' from mem address.
                 indexedTo = findIndex(binString);
                 curTag = findTag(binString);
+                bytes = Integer.parseInt( lineScanner.next() );
+                data = lineScanner.next();
+                isValid = (dataCache[indexedTo.intValue()][0].charAt(0) == '1')? true:false;
 
-                System.out.println("Address: " + temp + " indexed to: "
+                /* System.out.println("Address: " + temp + " indexed to: "
                         + Long.toHexString(indexedTo) + " with tag: " + Long.toHexString(curTag)+"\n" );
-
+*/
                 addr = Long.parseLong( temp, 16);
                 temp = temp.substring(0, temp.length() -1) + '0'; //remove last digit and add 0 to use as a baseline.
 
@@ -68,28 +73,51 @@ public class sys1 {
                 }else
                     baseChange = false;
 
+                //setup: [0] = "validBit dirtyBit Tag"  [1] = data;
                 if(baseChange || addr - baseAddr >= diff){//Detects a change in index from previous mem address/ or is first address.
-                    String currentTag, cacheTag;
-                    //cacheTag = dataCache[indexedTo][0].substring()
-                    if(isRead){
-                        //processRead();
-                    }
+                    cacheTag = Long.parseLong(dataCache[indexedTo.intValue()][0].substring(4) );
 
-                }else{
-                    if(!isRead){
+                    //Catch instance when index is valid.
+                    if(cacheTag.equals(curTag)){
                         //processHit();
+                        if(isRead) {
+                            loads++;
 
-                    }else{//read hit case 1. Update stats.
-                        if(dataCache[indexedTo.intValue()][0].substring(0,1).equals("1") && curTag == Long.parseLong(dataCache[ indexedTo.intValue()][0].substring(4), 16)){
-                            //setup: [0] = "validBit dirtyBit Tag"  [1] = data;
-                            //store++;
                         }
+                        else {
+                            stores++;
+                        }
+                    }else{
+                        //processMiss();
+                        if(isRead) {
+                            loads++;
+                            rMiss++;
+                            dRmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dRmiss + 1 : dRmiss;
+                        }
+                        else {
+                            stores++;
+                            wMiss++;
+                            dWmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dWmiss + 1 : dWmiss;
+                        }
+                    }
+                }
+                else{
+                    if( isRead && dataCache[indexedTo.intValue()][0].substring(0,1).equals("1")){//read hit case 1. Update stats.
+                        //just update stats
+                        loads++;
+                        rTime++;
+
+                    }
+                    else if( !isRead ){//case 1 write hit.
+                        //processHit();
+                        stores++;
                     }
                 }
 
                 lineNum++;
             }
-            System.out.println(misses + " " + hits);
+            System.out.println("Loads: " + loads + " stores: " + stores + " total accesses: " + (loads+stores));
+            System.out.println("rmiss: " + rMiss + " wmiss: " + wMiss);
 
         }catch(FileNotFoundException exception)
         {
@@ -146,7 +174,7 @@ public class sys1 {
         dataCache = new String[numRows][2];
 
         for(int i = 0; i < numRows; i++){
-                dataCache[i][0] = "0";//Indicates a invalid
+                dataCache[i][0] = "0 0 0";//Indicates a invalid
         }
     }
 
@@ -189,33 +217,6 @@ public class sys1 {
         return  Long.parseLong(binAddrStr.substring(0, binAddrStr.length() - indexBits - offsetBits), 2);
     }
 
-    static int countLines(File file){
-        LineNumberReader lnr = null;
-        try{
-            lnr = new LineNumberReader(new FileReader(file));
-            lnr.skip(Long.MAX_VALUE);
-            lnr.close();
 
-        }catch(Exception e){}
-        return lnr.getLineNumber() + 1;
-    }
-
-    static int getMaxCharsPerLine(File file){
-        int max = 0, upTo = 100;
-        try{
-
-            BufferedReader reader = new BufferedReader(new FileReader(file));
-
-            max = reader.readLine().length();
-            //100 lines should be sufficient to find the max Char line pattern.
-            for(int i = 0; i < upTo; i++){
-                max = (max < reader.readLine().length())? reader.readLine().length() : max;
-            }
-
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-        return max +1;//add 1 for carriage return;
-    }
 }
 
