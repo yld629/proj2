@@ -10,9 +10,10 @@ public class sys1 {
     final static int blockSz = 16, missPenalty = 4, wordBytes = 4;//Set block size of 16 bytes.
     static int cacheSz, numRows, wordsPerRow, ic1, ic2, lineNum = 0, offsetBits, indexBits,
             tagbits, diff, loads = 0, stores = 0, wMiss = 0, rMiss = 0, dRmiss = 0, dWmiss = 0,
-            rTime = 0, wTime = 0;
+            bytesRead =0, bytesWritten = 0,rTime = 0, wTime = 0;
     static boolean verbose = false;
     static String dataCache[][];
+    static String verboseOutPut = "";
 
     public static void main( String[] args){
         File file;
@@ -36,11 +37,11 @@ public class sys1 {
             int bytes, hits = 0, misses= 0;
             Long addr, baseAddr = 0L, mem_addr = 0L, indexedTo, curTag, cacheTag;
             String binString, data;
-            boolean isRead, isValid;
+            boolean isRead, isValid, isDirty;
 
             baseChange = false;
             while(scan.hasNextLine()){
-                String line = scan.nextLine();
+                String line = scan.nextLine(), addrStr;
 
                 //System.out.println("Line no: " + lineNum + "\t" + line);
 
@@ -52,45 +53,94 @@ public class sys1 {
                 lineScanner.next();//Skip PC address
 
                 isRead = (lineScanner.next().equals("R"))? true:false;
-                binString = hexToBinString( lineScanner.next() );//remove preceding '0x' from mem address.
+                addrStr = lineScanner.next();
+                binString = hexToBinString( addrStr );//remove preceding '0x' from mem address.
                 indexedTo = findIndex(binString);
                 curTag = findTag(binString);
                 bytes = Integer.parseInt( lineScanner.next() );
                 data = lineScanner.next();
                 isValid = (dataCache[indexedTo.intValue()][0].charAt(0) == '1')? true:false;
+                isDirty = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? true:false;
                 cacheTag = Long.parseLong( dataCache[indexedTo.intValue()][0].substring(4) );
 
+                if(verbose && (lineNum >= ic1 && lineNum <= ic2) ){
+                    verboseOutPut += lineNum + " " + Long.toHexString(indexedTo) + " " + Long.toHexString(curTag) + " " +
+                            dataCache[indexedTo.intValue()][0].charAt(0) + " " + Long.toHexString(cacheTag) +
+                            " " + dataCache[indexedTo.intValue()][0].charAt(2) + " ";
+                }
                 /* System.out.println("Address: " + temp + " indexed to: "
                         + Long.toHexString(indexedTo) + " with tag: " + Long.toHexString(curTag)+"\n" );
 */
-                addr = Long.parseLong( temp, 16);
-                temp = temp.substring(0, temp.length() -1) + '0'; //remove last digit and add 0 to use as a baseline.
+                addr = Long.parseLong( addrStr.substring(2), 16);//remove "0x"
+                addrStr = addrStr.substring(2, addrStr.length() -1) + '0'; //remove last digit and add 0 to use as a baseline.
 
-                Long curBaseAddr = Long.parseLong( temp , 16);
+                Long curBaseAddr = Long.parseLong( addrStr , 16);
 
-                if(curBaseAddr != baseAddr){
+                if(!curBaseAddr.equals(baseAddr )){
                     baseChange = true;
                     baseAddr = curBaseAddr;
                 }else
                     baseChange = false;
 
                 //setup: [0] = "validBit dirtyBit Tag"  [1] = data;
-                if(baseChange || addr - baseAddr >= diff && !isValid || addr - baseAddr >= diff && !isValid && cacheTag != curTag){//Detects a change in index from previous mem address/ or is first address.
-                    cacheTag = Long.parseLong(dataCache[indexedTo.intValue()][0].substring(4) );
+                if(baseChange && !isValid || addr - baseAddr >= diff && !isValid || addr - baseAddr >= diff && !isValid && cacheTag != curTag){//Detects a change in index from previous mem address/ or is first address.
                     //processMiss();
+                    String placeHolder;
+                    if(verbose && (lineNum >= ic1 && lineNum <= ic2))
+                        verboseOutPut += "0 ";//set '0' to indicate a miss in verbose output.
+
+                    placeHolder = dataCache[indexedTo.intValue()][0].substring(0, 4);//remove old tag and insert new
+                    dataCache[indexedTo.intValue()][0] = placeHolder + curTag;
+
+                    bytesRead += bytes;//mem ->cache happens for all cases of miss.
+                    dataCache[indexedTo.intValue()][1] = data;
+
+                    placeHolder = dataCache[indexedTo.intValue()][0].substring(1);//replace valid bit
+                    dataCache[indexedTo.intValue()][0] = '1' + placeHolder;
+
+                    if(isDirty){
+                        bytesWritten += bytes;//data in cache --->Memory. Happens for all dirty misses.
+
+                        if(verbose && (lineNum >= ic1 && lineNum <= ic2))
+                            verboseOutPut += "2b\n";
+                        //insert cycle counts for dirty misses
+                    }
+                    else{
+                        if(verbose && (lineNum >= ic1 && lineNum <= ic2))
+                            verboseOutPut +="2a\n";
+                        //insert cycle counts for clean misses
+                    }
+
+
                     if(isRead) {
                         loads++;
                         rMiss++;
                         dRmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dRmiss + 1 : dRmiss;
+
+                        //Set dirtybit to clear
+                        placeHolder = dataCache[indexedTo.intValue()][0];
+                        dataCache[indexedTo.intValue()][0] = placeHolder.substring(0, 2) + '0' +
+                                placeHolder.substring(3);
                     }
                     else {
                         stores++;
                         wMiss++;
                         dWmiss = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? dWmiss + 1 : dWmiss;
+
+                        //Set dirtybit to dirty
+                        placeHolder = dataCache[indexedTo.intValue()][0];
+                        dataCache[indexedTo.intValue()][0] = placeHolder.substring(0, 2) + '1' +
+                                placeHolder.substring(3);
                     }
 
                 }
-                else{//process hits
+                else{
+                    //process hits
+                    String placeHolder;
+
+                    if(verbose && (lineNum >= ic1 && lineNum <= ic2))
+                        verboseOutPut += "1 1\n";//set "1 1" to indicate a hit in verbose output of type case 1.
+
                     if( isRead && dataCache[indexedTo.intValue()][0].substring(0,1).equals("1")){//read hit case 1. Update stats.
                         //just update stats
                         loads++;
@@ -98,13 +148,22 @@ public class sys1 {
 
                     }
                     else if( !isRead ){//case 1 write hit.
-
                         stores++;
+
+                        //Set dirty bit
+                        placeHolder = dataCache[indexedTo.intValue()][0];
+                        dataCache[indexedTo.intValue()][0] = placeHolder.substring(0, 2) + '1' +
+                                placeHolder.substring(3);
+
+                        //mem ->cache happens for all cases of write-hits.
+                        bytesRead += bytes;
+                        dataCache[indexedTo.intValue()][1] = data;
                     }
                 }
 
                 lineNum++;
             }
+            System.out.println(verboseOutPut);
             System.out.println("Loads: " + loads + " stores: " + stores + " total accesses: " + (loads+stores));
             System.out.println("rmiss: " + rMiss + " wmiss: " + wMiss);
 
@@ -117,6 +176,13 @@ public class sys1 {
             System.out.println("Error: " + exception.getMessage());
             exception.printStackTrace();
         }
+    }
+
+    static void processMiss(boolean dirtyBitSet, boolean readSet, int bytesToWrite){
+            if(dirtyBitSet){
+
+            }
+
     }
 
     static void setup(String[] arguments)throws Exception{
