@@ -17,10 +17,13 @@ public class sys1 {
 
     public static void main( String[] args){
         File file;
+        PrintWriter pw;
         Scanner scan, lineScanner;
         Boolean baseChange;
 
         try{
+            pw = new PrintWriter("myOut.txt", "UTF-8");//results
+
             setup(args);
             file = new File(args[0]);
             scan = new Scanner(file);
@@ -36,7 +39,7 @@ public class sys1 {
 
             int bytes, hits = 0, misses= 0;
             Long addr, baseAddr = 0L, mem_addr = 0L, indexedTo, curTag, cacheTag;
-            String binString, data;
+            String binString, data, indexedToStr, curTagStr, cacheTagStr ;
             boolean isRead, isValid, isDirty;
 
             baseChange = false;
@@ -56,17 +59,22 @@ public class sys1 {
                 addrStr = lineScanner.next();
                 binString = hexToBinString( addrStr );//remove preceding '0x' from mem address.
                 indexedTo = findIndex(binString);
+                indexedToStr = Long.toHexString(indexedTo);
                 curTag = findTag(binString);
+                curTagStr = Long.toHexString(curTag);
                 bytes = Integer.parseInt( lineScanner.next() );
                 data = lineScanner.next();
                 isValid = (dataCache[indexedTo.intValue()][0].charAt(0) == '1')? true:false;
                 isDirty = (dataCache[indexedTo.intValue()][0].charAt(2) == '1')? true:false;
                 cacheTag = Long.parseLong( dataCache[indexedTo.intValue()][0].substring(4) );
+                cacheTagStr = Long.toHexString(cacheTag);
 
                 if(verbose && (lineNum >= ic1 && lineNum <= ic2) ){
-                    verboseOutPut += lineNum + " " + Long.toHexString(indexedTo) + " " + Long.toHexString(curTag) + " " +
+                    verboseOutPut = lineNum + " " + Long.toHexString(indexedTo) + " " + Long.toHexString(curTag) + " " +
                             dataCache[indexedTo.intValue()][0].charAt(0) + " " + Long.toHexString(cacheTag) +
                             " " + dataCache[indexedTo.intValue()][0].charAt(2) + " ";
+                    //System.out.print(verboseOutPut);
+                    //pw.print(verboseOutPut);
                 }
                 /* System.out.println("Address: " + temp + " indexed to: "
                         + Long.toHexString(indexedTo) + " with tag: " + Long.toHexString(curTag)+"\n" );
@@ -82,8 +90,11 @@ public class sys1 {
                 }else
                     baseChange = false;
 
-                //setup: [0] = "validBit dirtyBit Tag"  [1] = data;
-                if(baseChange && !isValid || addr - baseAddr >= diff && !isValid || addr - baseAddr >= diff && !isValid && cacheTag != curTag){//Detects a change in index from previous mem address/ or is first address.
+                /*setup: [0] = "validBit dirtyBit Tag"  [1] = data;
+                Detects a change in index from previous mem address ||  is first address || tags don't match a valid cache index.*/
+                if(baseChange && !isValid || addr - baseAddr >= diff && !isValid
+                        || addr - baseAddr >= diff && !isValid && cacheTag != curTag
+                        || !cacheTag.equals(curTag) && isValid){
                     //processMiss();
                     String placeHolder;
                     if(verbose && (lineNum >= ic1 && lineNum <= ic2))
@@ -139,7 +150,7 @@ public class sys1 {
                     String placeHolder;
 
                     if(verbose && (lineNum >= ic1 && lineNum <= ic2))
-                        verboseOutPut += "1 1\n";//set "1 1" to indicate a hit in verbose output of type case 1.
+                        verboseOutPut += "1 1 \n";//set "1 1" to indicate a hit in verbose output of type case 1.
 
                     if( isRead && dataCache[indexedTo.intValue()][0].substring(0,1).equals("1")){//read hit case 1. Update stats.
                         //just update stats
@@ -160,12 +171,18 @@ public class sys1 {
                         dataCache[indexedTo.intValue()][1] = data;
                     }
                 }
+                if(verbose && (lineNum >= ic1 && lineNum <= ic2)){
+                    System.out.print(verboseOutPut);
+                    pw.print(verboseOutPut);
+                }
 
                 lineNum++;
             }
-            System.out.println(verboseOutPut);
+            //System.out.println(verboseOutPut);
             System.out.println("Loads: " + loads + " stores: " + stores + " total accesses: " + (loads+stores));
             System.out.println("rmiss: " + rMiss + " wmiss: " + wMiss);
+
+            pw.close();
 
         }catch(FileNotFoundException exception)
         {
@@ -204,8 +221,7 @@ public class sys1 {
             throw new Exception("Invalid argument: " +arguments[3]);
         else if (arguments.length == 7 && Integer.parseInt(arguments[4]) > Integer.parseInt(arguments[5]))
             throw new Exception("Start value : " + arguments[4] + " must be less than or equal to end value: " + arguments[5]);
-        else if (arguments.length == 7 && Integer.parseInt(arguments[5]) > cacheSz)
-            throw new Exception("End value: " + arguments[5] + " is greater than cache size");
+
 
         if(arguments.length == 7 && arguments[3].equals("-v")){
             verbose = true;
